@@ -88,9 +88,9 @@ class ProjectActions(private val store: ProjectStore, private val reader: Reader
         require(originals.isNotEmpty()) { "没有可复制的正文，请先使用原阅读器缓存或导入" }
         require(authorMemory.isNotBlank() || originals.size <= settings.recentChapters) { "长篇续写需要先整理并核对前文记忆，不能只靠最后几章冒充完整记忆" }
         val copied = originals.mapIndexed { i, c -> c.copy(id = newId(), ordinal = i + 1,
-            memoryAfter = if (i == originals.lastIndex) authorMemory else "") }
+            memoryAfter = if (i == originals.lastIndex) authorMemory else "", memoryV2 = null, authorNote = "", arcSummary = "") }
         val p = Project(title = title.trim().take(190) + " · AI续写", settings = settings, createdAt = clock.nowMillis(),
-            chapters = copied, pendingPublish = true, seedMemory = authorMemory, status = "已建立独立续写副本；原书和源文件不变")
+            chapters = copied, pendingPublish = true, seedMemory = "", status = "已建立独立续写副本；原书和源文件不变")
         store.create(p); return p
     }
     fun restoreBackup(backup: Project): Project {
@@ -98,7 +98,7 @@ class ProjectActions(private val store: ProjectStore, private val reader: Reader
         val p = backup.copy(id = newId(), title = backup.title.take(180) + " · 导入备份",
             revision = 0, activeRun = null, deletedAt = null, pendingPublish = true,
             receipts = backup.receipts.map { if (it.status == ReceiptStatus.RESERVED) it.copy(status = ReceiptStatus.ESTIMATED) else it },
-            draft = backup.draft?.copy(needsReview = true), status = "备份已恢复；不会自动调用 API")
+            draft = backup.draft?.let { it.copy(needsReview = it.needsReview || it.stage == DraftStage.BODY) }, status = "备份已恢复；不会自动调用 API")
         store.create(p); return p
     }
 }

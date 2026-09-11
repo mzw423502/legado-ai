@@ -15,7 +15,7 @@ object ProjectJson {
         p.validate(); return p
     }
     fun encodeBackup(p: Project): String = encode(p.copy(activeRun = null,
-        draft = p.draft?.copy(needsReview = true), status = "备份快照；恢复后不自动运行"))
+        draft = p.draft?.let { it.copy(needsReview = it.needsReview || it.stage == DraftStage.BODY) }, status = "备份快照；恢复后不自动运行"))
     private fun projectMap(p: Project): Map<String, Any?> = linkedMapOf(
         "schema" to p.schema, "id" to p.id, "title" to p.title, "settings" to settingsMap(p.settings),
         "createdAt" to p.createdAt, "updatedAt" to p.updatedAt, "revision" to p.revision,
@@ -32,15 +32,19 @@ object ProjectJson {
         recentChapters = o.int("recentChapters", 3), maxParts = o.int("maxParts", 8))
     private fun draftMap(d: Draft) = mapOf("chapterId" to d.chapterId, "ordinal" to d.ordinal,
         "stage" to d.stage.name, "plan" to d.plan, "body" to d.body, "memoryAfter" to d.memoryAfter,
-        "completedParts" to d.completedParts, "needsReview" to d.needsReview, "note" to d.note)
+        "completedParts" to d.completedParts, "needsReview" to d.needsReview, "note" to d.note,
+        "memoryProgress" to d.memoryProgress?.let(MemoryJson::progressMap))
     private fun draft(o: Map<String, Any?>) = Draft(chapterId = o.str("chapterId"), ordinal = o.int("ordinal"),
         stage = DraftStage.valueOf(o.str("stage")), plan = o.str("plan"), body = o.str("body"),
         memoryAfter = o.str("memoryAfter"), completedParts = o.int("completedParts"),
-        needsReview = o.bool("needsReview"), note = o.str("note"))
+        needsReview = o.bool("needsReview"), note = o.str("note"),
+        memoryProgress = o["memoryProgress"]?.let { MemoryJson.progress(it.obj()) })
     private fun chapterMap(c: Chapter) = mapOf("id" to c.id, "ordinal" to c.ordinal, "title" to c.title,
-        "content" to c.content, "memoryAfter" to c.memoryAfter, "createdAt" to c.createdAt)
+        "content" to c.content, "memoryAfter" to c.memoryAfter, "createdAt" to c.createdAt,
+        "memoryV2" to c.memoryV2?.let(MemoryJson::chapterMap), "authorNote" to c.authorNote, "arcSummary" to c.arcSummary)
     private fun chapter(o: Map<String, Any?>) = Chapter(o.str("id"), o.int("ordinal"), o.str("title"),
-        o.str("content"), o.str("memoryAfter"), o.num("createdAt"))
+        o.str("content"), o.str("memoryAfter"), o.num("createdAt"),
+        o["memoryV2"]?.let { MemoryJson.chapter(it.obj()) }, o.str("authorNote"), o.str("arcSummary"))
     private fun archiveMap(a: ArchivedTail) = mapOf("id" to a.id, "fromOrdinal" to a.fromOrdinal,
         "prefixIds" to a.prefixIds, "chapters" to a.chapters.map(::chapterMap),
         "draft" to a.draft?.let(::draftMap), "createdAt" to a.createdAt)

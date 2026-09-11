@@ -9,7 +9,7 @@ fun textLength(s: String): Int = s.codePointCount(0, s.length)
 data class NovelSettings(
     val bible: String = "", val outline: String = "", val director: String = "",
     val targetChars: Int = 4000, val contextTokens: Int = 128000,
-    val outputTokens: Int = 16384, val recentChapters: Int = 3, val maxParts: Int = 8
+    val outputTokens: Int = 16384, val recentChapters: Int = 1, val maxParts: Int = 8
 ) {
     fun validate() {
         require(targetChars in 500..30000) { "章长应在 500—30000 字之间" }
@@ -23,9 +23,10 @@ enum class DraftStage { PLAN, BODY, MEMORY, READY }
 data class Draft(val chapterId: String = newId(), val ordinal: Int,
     val stage: DraftStage = DraftStage.PLAN, val plan: String = "", val body: String = "",
     val memoryAfter: String = "", val completedParts: Int = 0,
-    val needsReview: Boolean = false, val note: String = "")
+    val needsReview: Boolean = false, val note: String = "", val memoryProgress: MemoryProgress? = null)
 data class Chapter(val id: String = newId(), val ordinal: Int, val title: String,
-    val content: String, val memoryAfter: String, val createdAt: Long)
+    val content: String, val memoryAfter: String, val createdAt: Long,
+    val memoryV2: ChapterMemory? = null, val authorNote: String = "", val arcSummary: String = "")
 data class ArchivedTail(val id: String = newId(), val fromOrdinal: Int,
     val prefixIds: List<String>, val chapters: List<Chapter>, val draft: Draft?, val createdAt: Long)
 enum class RunMode { ONE_CHAPTER, TO_CHAPTER, CONTINUOUS }

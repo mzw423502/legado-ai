@@ -2,7 +2,7 @@
 package io.legado.app.ai.core
 
 data class ApiConfig(val baseUrl: String = "https://api.deepseek.com",
-    val writingModel: String = "deepseek-flash", val planningModel: String = "deepseek-flash",
+    val writingModel: String = "deepseek-v4-flash", val planningModel: String = "deepseek-v4-flash",
     val deepSeekThinkingField: Boolean = true, val timeoutSeconds: Int = 300) {
     fun validate() {
         ApiAddress.completionUrl(baseUrl)
@@ -13,7 +13,7 @@ data class ApiConfig(val baseUrl: String = "https://api.deepseek.com",
 object CompletionProtocol {
     fun payload(request: CompletionRequest, config: ApiConfig): String {
         config.validate()
-        val planning = request.purpose in setOf(Purpose.PLAN, Purpose.MEMORY)
+        val planning = request.purpose == Purpose.PLAN
         val data = linkedMapOf<String, Any?>(
             "model" to if (planning) config.planningModel else config.writingModel,
             "messages" to request.messages.map { mapOf("role" to it.role, "content" to it.content) },

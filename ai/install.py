@@ -4,6 +4,7 @@
 from pathlib import Path
 import json
 import shutil
+import os
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / 'app/src/main'
@@ -55,8 +56,7 @@ replace(activity, 'gravity = Gravity.TOP or Gravity.START; setText(value); isSav
 # An imported summary is valid only through the copied final chapter, not before chapter one.
 replace(JAVA / 'ai/core/ProjectActions.kt', 'pendingPublish = true, seedMemory = authorMemory,',
     'pendingPublish = true, seedMemory = "",')
-replace(JAVA / 'ai/core/ContextComposer.kt', 'p.settings.validate()\n        val draft',
-    'p.settings.validate()\n        if (p.chapters.size > p.settings.recentChapters && p.memory().isBlank())\n            throw Paused("保留的前文较长，但缺少当前记忆。请先填写并核对长期记忆，再开始创作。")\n        val draft')
+
 
 # Add visible entry points while preserving the original reading UI.
 # The bookshelf entry is a static ALWAYS action: it must be visible without opening the overflow menu.
@@ -100,8 +100,8 @@ replace(manifest, '        <!-- 主入口 -->', '''        <!-- Independent AI m
         <!-- 主入口 -->''')
 build = ROOT / 'app/build.gradle'
 replace(build, 'applicationId "com.legado.app"', 'applicationId "com.mzw.legado.ai"')
-replace(build, 'versionCode = versionCodeValue', 'versionCode = 10002')
-replace(build, 'versionName version', 'versionName "3.26082823-ai.2"')
+replace(build, 'versionCode = versionCodeValue', 'versionCode = 10003')
+replace(build, 'versionName version', 'versionName "3.26082823-ai.3"')
 text = build.read_text(encoding='utf-8')
 if '// AI extension build settings' not in text:
     build.write_text(text + '''\n// AI extension build settings
@@ -129,3 +129,13 @@ for group, target in [('unit', ROOT / 'app/src/test/java/io/legado/app/ai'),
     'visible_entry': 'bookshelf toolbar: AI 创作 (always)',
 }, ensure_ascii=False, indent=2), encoding='utf-8')
 print('Applied AI extension; original reading layout and source engine retained.')
+
+# Set only in the recovery/coexistence build; default retains the exact original app ID.
+package_base = os.environ.get("AI_PACKAGE_BASE", "com.mzw.legado.ai")
+if package_base != "com.mzw.legado.ai":
+    if package_base != "com.mzw.legado.ai.memory":
+        raise RuntimeError("Unexpected recovery package")
+    for path in [ROOT / "app/build.gradle", ROOT / "app/google-services.json"]:
+        path.write_text(path.read_text(encoding="utf-8").replace("com.mzw.legado.ai", package_base), encoding="utf-8")
+    path = ROOT / "app/build.gradle"
+    path.write_text(path.read_text(encoding="utf-8").replace("阅读 · AI", "阅读 · AI 记忆版"), encoding="utf-8")

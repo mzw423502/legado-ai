@@ -26,6 +26,7 @@ class NovelEngine(private val store: ProjectStore, private val gateway: Completi
                 }
                 createChapter(projectId, lease.id, cancellation)
                 synchronizeReader(projectId, lease.id)
+                maybeArcSummary(projectId, lease.id, cancellation)
             }
             stopStatus(projectId, lease.id, "本轮创作完成")
         } catch (e: Exception) {
@@ -79,7 +80,8 @@ class NovelEngine(private val store: ProjectStore, private val gateway: Completi
             }
             settle(id, req.requestId, response.reportedTokens())
             cancellation.check(); active(id, run)
-            if (response.content.isBlank()) throw Paused("接口未返回正文；未创建空白章节")
+            if (response.content.isBlank() && purpose != Purpose.MEMORY)
+                throw Paused("接口未返回正文；未创建空白章节")
             if (response.finishReason !in setOf("stop", "length"))
                 throw Paused("接口未正常结束（${response.finishReason}）；草稿未自动收录")
             return response
@@ -123,14 +125,7 @@ class NovelEngine(private val store: ProjectStore, private val gateway: Completi
             }
         }
         p = active(id, run)
-        if (p.draft!!.stage == DraftStage.MEMORY) {
-            val res = request(id, run, Purpose.MEMORY, cancellation) { cur, text ->
-                cur.copy(draft = cur.draft!!.copy(memoryAfter = text), status = "整理人物、时间线和伏笔")
-            }
-            if (res.finishReason != "stop") throw Paused("长期记忆被截断；正文已保留，请提高输出上限后继续")
-            if (textLength(res.content) < 20) throw Paused("记忆整理结果过短，未自动收录")
-            edit(id, run) { it.copy(draft = it.draft!!.copy(memoryAfter = res.content, stage = DraftStage.READY)) }
-        }
+        if (p.draft!!.stage == DraftStage.MEMORY) collectMemory(id, run, cancellation)
         cancellation.check()
         edit(id, run) { cur ->
             val d = cur.draft!!; check(d.stage == DraftStage.READY)
@@ -139,8 +134,60 @@ class NovelEngine(private val store: ProjectStore, private val gateway: Completi
             val title = if (hasTitle) first else "第${d.ordinal}章"
             val content = if (hasTitle) d.body.substringAfter('\n', "").trim() else d.body.trim()
             require(content.isNotBlank()) { "正文为空" }
-            cur.copy(chapters = cur.chapters + Chapter(d.chapterId, d.ordinal, title, content, d.memoryAfter, clock.nowMillis()),
+            cur.copy(chapters = cur.chapters + Chapter(d.chapterId, d.ordinal, title, content, d.memoryAfter, clock.nowMillis(),
+                d.memoryProgress?.let { ChapterMemory(memoryHash(content), it.parts) }),
                 draft = null, pendingPublish = true, status = "正文已保存，正在更新原阅读器目录")
+        }
+    }
+    /** Retry only bounded extraction/format errors. Never retry authoring, billing, auth or network failures. */
+    private fun collectMemory(id: String, run: String, cancellation: Cancellation) {
+        var p = active(id, run)
+        val hash = memoryHash(p.draft!!.body)
+        if (p.draft!!.memoryProgress?.bodyHash != hash) edit(id, run) { cur ->
+            cur.copy(draft = cur.draft!!.copy(memoryProgress = MemoryLedger.newProgress(cur, cur.draft)),
+                status = "正文已保存；开始按段整理记忆增量")
+        }
+        while (true) {
+            cancellation.check(); p = active(id, run)
+            val d = p.draft!!; val progress = d.memoryProgress!!
+            val parts = MemoryLedger.chunks(d.body, progress.chunkChars)
+            if (progress.parts.size >= parts.size) break
+            try {
+                val response = request(id, run, Purpose.MEMORY, cancellation) { cur, text ->
+                    cur.copy(draft = cur.draft!!.copy(memoryAfter = text),
+                        status = "正文已保存；整理记忆 ${progress.parts.size + 1}/${parts.size}${if (progress.compact) "（紧凑重试）" else ""}")
+                }
+                if (response.finishReason != "stop") throw MemoryFormatException("单段记忆输出被截断")
+                val delta = MemoryLedger.parseDelta(response.content, parts[progress.parts.size],
+                    MemoryLedger.index(active(id, run)), progress.compact)
+                edit(id, run) { cur -> cur.copy(draft = cur.draft!!.copy(memoryProgress =
+                    progress.copy(parts = progress.parts + delta, compact = false))) }
+            } catch (e: MemoryFormatException) {
+                if (!progress.compact) edit(id, run) { cur -> cur.copy(draft = cur.draft!!.copy(
+                    memoryProgress = progress.copy(compact = true)), status = "记忆格式不完整；仅重试本段一次，不重写正文") }
+                else throw Paused("正文已保存，记忆待整理。紧凑重试仍未通过；可点击“只整理记忆”，不会重写正文。原因：${e.message}")
+            }
+        }
+        edit(id, run) { cur ->
+            val d = cur.draft!!; val progress = d.memoryProgress!!
+            cur.copy(draft = d.copy(memoryAfter = ChapterMemory(progress.bodyHash, progress.parts).display(),
+                stage = DraftStage.READY), status = "本章记忆增量已校验")
+        }
+    }
+    /** An arc is a convenience index, not a prerequisite for publishing or the next chapter. */
+    private fun maybeArcSummary(id: String, run: String, cancellation: Cancellation) {
+        val p = active(id, run)
+        if (p.chapters.isEmpty() || p.chapters.size % 15 != 0 || p.chapters.last().arcSummary.isNotBlank()) return
+        if (p.chapters.takeLast(15).any { it.memoryV2 == null }) return
+        try {
+            val res = request(id, run, Purpose.ARC_SUMMARY, cancellation) { cur, _ -> cur }
+            if (res.finishReason == "stop" && textLength(res.content) in 50..1400) edit(id, run) { cur ->
+                cur.copy(chapters = cur.chapters.dropLast(1) + cur.chapters.last().copy(arcSummary = res.content))
+            }
+        } catch (e: Cancelled) { throw e }
+        catch (_: Exception) {
+            cancellation.check(); active(id, run)
+            // Chapter deltas already exist. The missing arc cannot erase text or invalidate memory.
         }
     }
     fun synchronizeReader(id: String, run: String? = null) {

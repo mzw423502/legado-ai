@@ -10,7 +10,11 @@ import java.util.Locale
 fun AiActivity.projectStats(p: Project): String {
     val basic = "${p.chapters.size}章 · ${p.chapters.sumOf { textLength(it.content) }}字"
     return if (AiRuntime.settings.isDemo(p.id)) "$basic\n离线体验：不连接 API，不产生费用"
-    else "$basic\n本机累计 ${p.receipts.size} 次请求 · ${p.receipts.sumOf { it.counted }} Token（含保守估算）"
+    else {
+        val reported = p.receipts.filter { it.status == ReceiptStatus.REPORTED }.sumOf { it.counted }
+        val estimated = p.receipts.filter { it.status != ReceiptStatus.REPORTED }.sumOf { it.counted }
+        "$basic\n${p.receipts.size}次请求 · API 已报告 $reported Token\n未报告用量的保守预算：$estimated Token（不是已确认计费）"
+    }
 }
 fun AiActivity.showHome(trash: Boolean = false) {
     page(if (trash) "回收站" else "AI 创作", if (trash) ({ showHome() }) else null)
@@ -59,12 +63,20 @@ fun AiActivity.showProject(id: String) {
         val running = p.activeRun != null || AiRuntime.runningId == id
         lastRunning = running; lastChapterCount = p.chapters.size
         statsLabel = label(projectStats(p)); statusLabel = label(p.status)
+        label(MemoryLedger.status(p))
         button("阅读", p.chapters.isNotEmpty()) { work({ AiRuntime.sync(id); AiRuntime.reader.open(id) }) { } }
         if (running) {
             button("停止并保留草稿") { work({ AiRuntime.stop(id) }) { showProject(id) } }
             button("停止并丢弃本章草稿") { confirm("丢弃草稿", "停止本轮创作并回收当前草稿；前面的正式章节保留。已发出的请求仍可能计费。", "停止并丢弃") {
                 work({ AiRuntime.actions.discardDraft(id) }) { showProject(id) }
             } }
+        } else if (p.draft?.stage == DraftStage.MEMORY) {
+            label("本章正文已完整保存。下一步只整理本章增量记忆，不重写正文，也不重发全书。")
+            button("只整理记忆，收录本章") {
+                work({ AiRuntime.actions.continueDraft(id) }) { requestStart(id, RunLimits()) }
+            }
+            button("只读本章草稿（不调用 API）") { showText("第${p.draft.ordinal}章 · 已保存草稿", p.draft.body) { showProject(id) } }
+            button("检查和编辑草稿") { showDraft(id) }
         } else if (p.draft?.needsReview == true) {
             label("上次草稿未完成，请先选择如何处理。")
             button("检查和编辑草稿") { showDraft(id) }
@@ -86,7 +98,7 @@ fun AiActivity.showProject(id: String) {
             "第${it.ordinal}章草稿 · ${textLength(it.body)}字\n${it.body.takeLast(1200)}" } ?: "正在准备下一章…")
         separator()
         button("设定与剧情指令", !running) { editNovel(id) }
-        button("长期记忆与伏笔", !running) { showMemory(id) }
+        button("记忆档案与纠正", !running) { showMemory(id) }
         button("章节与重写", !running && p.chapters.isNotEmpty()) { showChapters(id) }
         button("旧版本与已丢弃草稿", !running) { showArchives(id) }
         if (p.pendingPublish) button("重新同步到书架（不调用 API）") { work({ AiRuntime.sync(id) }) { showProject(id) } }

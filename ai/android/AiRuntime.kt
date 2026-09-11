@@ -81,7 +81,8 @@ class AiDemoGateway : CompletionGateway {
         val text = when (request.purpose) {
             Purpose.PLAN -> "离线演示章节卡：林砚在旧码头寻找失踪的递信人，发现一枚有潮汐刻痕的铜扣。冲突在于必须在退潮前决定是否信任摆渡人。保留灯塔信号与旧案的联系，不揭露幕后身份。"
             Purpose.BODY -> "第${chapter}章 退潮之前\n\n" + AiDemoText.body
-            Purpose.MEMORY -> "离线演示记忆：林砚仍在雾港调查失踪的递信人；人物状态：衣袖被雨水打湿，持有旧信与铜扣，对摆渡人保持谨慎信任。时间线：入夜至退潮前。地点：旧码头、潮汐门。伏笔 F01：铜扣三道刻痕，含义待定；F02：灯塔逆时闪烁，尚未回收。尚未揭露幕后人物身份。"
+            Purpose.MEMORY -> """{"summary":"离线演示：林砚在旧码头登船，调查递信人的下落，尚未揭示幕后身份。","records":[]}"""
+            Purpose.ARC_SUMMARY -> "离线演示阶段摘要：" + "林砚沿着旧信与铜扣的线索调查递信人，仍需核实摆渡人的动机。".repeat(3)
             Purpose.CONNECTION_TEST -> "离线演示，不连接 API"
         }
         val out = StringBuilder()

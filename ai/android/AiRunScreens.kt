@@ -68,9 +68,9 @@ fun AiActivity.showApiSettings() {
     key.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
     if (Build.VERSION.SDK_INT >= 26) key.importantForAutofill = android.view.View.IMPORTANT_FOR_AUTOFILL_NO
     val writing = field("正文模型", config.writingModel)
-    val planning = field("规划与记忆模型", config.planningModel)
+    val planning = field("章节规划模型", config.planningModel)
     val thinking = CheckBox(this).apply {
-        text = "使用 DeepSeek 思考参数：规划/记忆开启，正文关闭"
+        text = "使用 DeepSeek 思考参数：规划开启，正文与增量记忆关闭"
         isChecked = config.deepSeekThinkingField; content.addView(this)
     }
     label("第三方兼容接口不支持 thinking 参数时，取消勾选。模型名以你所用服务商为准。")

@@ -23,7 +23,7 @@ data class Project(val schema: Int = 1, val id: String = newId(), val title: Str
         require(receipts.all { it.reserved >= 0 && it.counted >= 0 })
     }
 }
-enum class Purpose { PLAN, BODY, MEMORY, CONNECTION_TEST }
+enum class Purpose { PLAN, BODY, MEMORY, ARC_SUMMARY, CONNECTION_TEST }
 data class Message(val role: String, val content: String)
 data class CompletionRequest(val requestId: String, val purpose: Purpose,
     val messages: List<Message>, val maxTokens: Int, val inputTokenUpperBound: Long)

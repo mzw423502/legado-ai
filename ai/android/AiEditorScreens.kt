@@ -53,7 +53,7 @@ private fun AiActivity.renderNovelForm(p: Project?) {
     val advancedStart = content.childCount
     val context = field("模型上下文上限 · Token", saved("context", settings.contextTokens.toString()), number = true)
     val output = field("单次输出上限 · Token", saved("output", settings.outputTokens.toString()), number = true)
-    val recent = field("最近全文章数 · 0至5", saved("recent", settings.recentChapters.toString()), number = true)
+    val recent = field("最近前文章数 · 新引擎最多取2章", saved("recent", settings.recentChapters.toString()), number = true)
     val parts = field("每章最多分段次数 · 1至20", saved("parts", settings.maxParts.toString()), number = true)
     val advancedViews = (advancedStart until content.childCount).map { content.getChildAt(it) }
     advancedViews.forEach { it.visibility = View.GONE }
@@ -107,23 +107,43 @@ fun AiActivity.showDraft(id: String) {
             work({ AiRuntime.store.update(id) { current ->
                 check(current.activeRun == null && current.draft?.chapterId == d.chapterId && current.revision == p.revision) { "草稿已变化，请重新打开检查" }
                 current.copy(draft = d.copy(body = body, stage = DraftStage.BODY, completedParts = 0,
-                    memoryAfter = "", needsReview = true), status = "草稿修改已保存，等待你选择下一步")
+                    memoryAfter = "", needsReview = true, memoryProgress = null), status = "草稿修改已保存，等待你选择下一步")
             } }) { showProject(id) }
         }
         if (d.plan.isNotBlank()) button("查看本章规划卡") { showText("本章规划", d.plan) { showDraft(id) } }
     }
 }
 fun AiActivity.showMemory(id: String) {
-    page("长期记忆与伏笔", { showProject(id) }); pageId = id
+    page("记忆档案与纠正", { showProject(id) }); pageId = id
     work({ AiRuntime.store.get(id)!! }) { p ->
-        label("这里保存截至当前正式章节的人物状态、时间线和未回收伏笔。可以纠正模型整理中的错误。不会改写正文。")
-        val memory = field("长期记忆台账", p.memory(), 16)
-        button("保存记忆修正", p.activeRun == null) {
+        label(MemoryLedger.status(p))
+        label("新章节只提取本章变化。人物、事实、线索和时间线按当前故事分支检索；删掉的后文不会留在工作记忆中。")
+        button("查看当前状态与相关记忆（只读）") {
+            val query = p.settings.director + p.draft?.plan.orEmpty()
+            showText("当前记忆视图", MemoryLedger.working(p) + "\n\n" + MemoryLedger.retrieve(p, query).text) { showMemory(id) }
+        }
+        button("查看逐章摘要与证据") {
+            page("逐章记忆", { showMemory(id) })
+            p.chapters.forEach { c -> button("${c.title} · ${if (c.memoryV2 == null) "旧版台账" else "增量记忆"}") {
+                val text = c.memoryV2?.let { m -> m.parts.joinToString("\n\n") { d ->
+                    "摘要：${d.summary}\n" + d.records.joinToString("\n") { r ->
+                        "${r.identity()} ${r.kind} ${r.entity}/${r.key}：${r.value} [${r.status}]\n证据：${r.evidence}"
+                    } + if (d.warningCount > 0) "\n${d.warningCount}条缺少原文证据，未入库。" else ""
+                } } ?: c.memoryAfter.ifBlank { "这章没有旧台账，正文仍完整保留。" }
+                showText(c.title, text) { showMemory(id) }
+            } }
+        }
+        val last = p.chapters.asReversed().firstOrNull { it.authorNote.isNotBlank() }
+        val note = last?.authorNote ?: if (p.chapters.isEmpty()) p.seedMemory else ""
+        val memory = field("作者核对与纠正（可选，优先于自动提取）", note, 8)
+        label("填写当前阶段必须记住的纠正，不必抄整本书。全文保存在本地；工作提示词优先取前1200字。自动档案和旧台账不会被覆盖。")
+        button("保存记忆纠正", p.activeRun == null) {
             val value = memory.text.toString()
             work({ AiRuntime.store.update(id) { current ->
                 check(current.activeRun == null && current.revision == p.revision) { "项目已变化，请重新打开记忆" }
                 if (current.chapters.isEmpty()) current.copy(seedMemory = value, status = "开篇记忆已更新")
-                else current.copy(chapters = current.chapters.dropLast(1) + current.chapters.last().copy(memoryAfter = value), status = "长期记忆已修正")
+                else current.copy(chapters = current.chapters.dropLast(1) + current.chapters.last().copy(authorNote = value),
+                    status = "作者纠正已保存，自动记录与正文保持不变")
             } }) { showProject(id) }
         }
     }

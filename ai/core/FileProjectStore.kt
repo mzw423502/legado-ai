@@ -5,6 +5,7 @@ import java.io.File
 import java.io.FileOutputStream
 
 class FileProjectStore(private val root: File) : ProjectStore {
+    private val protectedIds = hashSetOf<String>()
     init { require(root.isDirectory || root.mkdirs()) { "无法建立 AI 小说目录" } }
     private fun file(id: String): File {
         require(id.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))) { "项目 ID 无效" }
@@ -28,6 +29,7 @@ class FileProjectStore(private val root: File) : ProjectStore {
     }
     @Synchronized override fun update(id: String, edit: (Project) -> Project): Project {
         val previous = get(id) ?: error("项目不存在")
+        protectBeforeUpgrade(file(id))
         val updated = edit(previous).copy(revision = previous.revision + 1)
         require(updated.id == id); updated.validate()
         write(file(id), ProjectJson.encode(updated)); return updated
@@ -35,8 +37,24 @@ class FileProjectStore(private val root: File) : ProjectStore {
     @Synchronized override fun erase(id: String, expectedRevision: Long?) {
         if (expectedRevision != null) check(get(id)?.revision == expectedRevision) { "项目刚被修改，已取消彻底删除" }
         val f = file(id)
-        for (name in listOf(f, File(f.path + ".bak"), File(f.path + ".new")))
+        for (name in listOf(f, File(f.path + ".bak"), File(f.path + ".new"), File(root, "upgrade_backups/${f.name}")))
             require(!name.exists() || name.delete()) { "删除失败，内容仍保留在本地" }
+    }
+    private fun protectBeforeUpgrade(f: File) {
+        if (f.name in protectedIds) return
+        val dir = File(root, "upgrade_backups")
+        require(dir.isDirectory || dir.mkdirs()) { "无法建立升级保护副本，原存档未更改" }
+        val copy = File(dir, f.name)
+        if (copy.exists()) {
+            // A corrupt/incomplete guard must not be treated as a valid backup.
+            ProjectJson.decode(copy.readText(Charsets.UTF_8)); protectedIds.add(f.name); return
+        }
+        val tmp = File(dir, f.name + ".new")
+        try {
+            val raw = f.readBytes()
+            FileOutputStream(tmp).use { it.write(raw); it.fd.sync() }
+            require(tmp.renameTo(copy)) { "无法保存升级保护副本" }; protectedIds.add(f.name)
+        } finally { tmp.delete() }
     }
     private fun recover(f: File) {
         val old = File(f.path + ".bak")

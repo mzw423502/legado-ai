@@ -19,7 +19,7 @@ class AiCoreTest {
         fun answer(r: CompletionRequest) = CompletionResult(when (r.purpose) {
             Purpose.PLAN -> "章节卡：寻找递信人；线索是铜扣；不提前揭露幕后人物。"
             Purpose.BODY -> "第1章 雨夜\n" + "雨水落在码头上，林砚收起信，决定先问清摆渡人的来历。".repeat(30)
-            Purpose.MEMORY -> "人物仍在码头调查，尚不知道信件来源。伏笔 F01 为铜扣上的三道刻痕，未回收；时间为入夜至退潮前。"
+            Purpose.MEMORY -> """{"summary":"人物仍在码头调查，尚不知道信件来源。铜扣刻痕尚未回收。","records":[]}"""
             else -> "连接成功"
         }, "stop", 100, 200)
         override fun complete(r: CompletionRequest, c: Cancellation, partial: (String) -> Unit): CompletionResult {

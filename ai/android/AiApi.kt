@@ -24,7 +24,7 @@ class AiApiSettings(private val context: Context) {
     private val keyFile = AtomicFile(File(context.noBackupFilesDir, "ai_api_key.enc"))
     private val alias = "${context.packageName}.ai.api.key"
     fun config() = ApiConfig(prefs.getString("base", "https://api.deepseek.com")!!,
-        prefs.getString("writer", "deepseek-flash")!!, prefs.getString("planner", "deepseek-flash")!!,
+        prefs.getString("writer", "deepseek-v4-flash")!!, prefs.getString("planner", "deepseek-v4-flash")!!,
         prefs.getBoolean("thinking", true), prefs.getInt("timeout", 300))
     fun save(config: ApiConfig, newKey: String?) {
         config.validate()
