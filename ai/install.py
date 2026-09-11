@@ -158,3 +158,11 @@ record['package'] = package_base + '.release'
 record['memory_version'] = 2
 record['planner_output_budget'] = 'author setting; not constrained by the extraction cap'
 manifest_record.write_text(json.dumps(record,ensure_ascii=False,indent=2),encoding='utf-8')
+
+# MEMORY_TRACING_TEST_COMPATIBILITY
+# AndroidJUnitRunner references this shared runtime dependency, even when the
+# release target itself does not call all its methods. Do not strip its API.
+pro = ROOT / 'app/proguard-rules.pro'
+if '# Memory runner shared tracing API' not in pro.read_text(encoding='utf-8'):
+    with pro.open('a', encoding='utf-8') as f:
+        f.write('\n# Memory runner shared tracing API\n-keep class androidx.tracing.** { *; }\n')
