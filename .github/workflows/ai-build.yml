@@ -26,10 +26,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: false
-      - name: Materialize reviewed source changes
+      - name: Finalize reviewed memory source
         run: |
-          if [ ! -f ai/core/MemoryLedger.kt ]; then python3 ai/apply_memory_v2.py; fi
-          python3 ai/post_memory_fixes.py
+          test -f ai/core/MemoryLedger.kt
+          python3 ai/finish_memory_build.py
       - name: Integrate native module
         run: |
           python3 ai/install.py
@@ -53,7 +53,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add ai/core ai/android ai/tests ai/install.py
           if ! git diff --cached --quiet; then
-            git commit -m '[skip ci] feat: bounded chapter memory, resumable extraction and lossless legacy support'
+            git commit -m '[skip ci] fix: preserve planning budget and align Android desugared runtime'
             git push origin HEAD:ai-writing
           fi
       - name: Enable hardware virtualization for emulator
