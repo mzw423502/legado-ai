@@ -243,10 +243,15 @@ object MemoryV2Checks {
         val f=F();val huge=setting.copy(bible="界".repeat(10000),contextTokens=8192,outputTokens=1024)
         f.actions.changeSettings(f.p.id,huge);f.run();check(f.gateway.calls.isEmpty() && f.get().settings.bible==huge.bible)
     }
+    fun case41PlanningRetainsConfiguredOutputBudget() {
+        val f=F(); f.readyBody()
+        check(ContextComposer.build(f.get(),Purpose.PLAN).maxTokens == f.get().settings.outputTokens)
+        check(ContextComposer.build(f.get(),Purpose.MEMORY).maxTokens <= 4096)
+    }
     @JvmStatic fun main(args: Array<String>) { runAll() }
     fun runAll() {
         val tests=MemoryV2Checks::class.java.declaredMethods.filter{it.name.matches(Regex("case[0-9]{2}[A-Za-z]+")) && it.parameterCount == 0 && !it.isSynthetic}.sortedBy{it.name}
-        check(tests.size == 40) { "Expected all 40 regression scenarios, found ${tests.size}" }
+        check(tests.size == 41) { "Expected all 41 regression scenarios, found ${tests.size}" }
         var passed=0
         for(t in tests){ try {t.invoke(this);passed++;println("PASS ${t.name}")} catch(e:Exception){throw AssertionError("FAIL ${t.name}",e.cause ?: e)} }
         println("MEMORY_V2_CHECKS: $passed/${tests.size} passed (synthetic local fixtures, no API)")

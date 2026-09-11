@@ -59,7 +59,7 @@ state 只记人物当前状态；fact 记明确事实；timeline 记本段事件
         if (p.chapters.size > p.settings.recentChapters && p.memory().isBlank() && p.chapters.none { it.memoryV2 != null })
             throw Paused("保留的前文较长，但缺少已核对记忆。请先在记忆页补充前文摘要；不会猜测未提供的剧情。")
         val draft = p.draft ?: Draft(ordinal = p.chapters.size + 1)
-        val maxOut = min(p.settings.outputTokens, if (purpose == Purpose.PLAN) 4096 else 32768)
+        val maxOut = if (purpose == Purpose.PLAN) p.settings.outputTokens else min(p.settings.outputTokens, 32768)
         val system = RULES + "\n【作者总设定：以下原样保留】\n" + p.settings.bible
         val directive = "【总纲】\n${p.settings.outline}\n【作者导演指令】\n${p.settings.director}"
         val task = if (purpose == Purpose.PLAN)

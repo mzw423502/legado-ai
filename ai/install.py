@@ -139,3 +139,22 @@ if package_base != "com.mzw.legado.ai":
         path.write_text(path.read_text(encoding="utf-8").replace("com.mzw.legado.ai", package_base), encoding="utf-8")
     path = ROOT / "app/build.gradle"
     path.write_text(path.read_text(encoding="utf-8").replace("阅读 · AI", "阅读 · AI 记忆版"), encoding="utf-8")
+
+# MEMORY_NATIVE_BUILD_FIXES
+# Instrumentation and target share a class loader. Their independently shrunk j$
+# libraries must not shadow incompatible constructors or obfuscated class names.
+build = ROOT / 'app/build.gradle'
+text = build.read_text(encoding='utf-8')
+if '// Shared complete desugared runtime' not in text:
+    build.write_text(text + """
+// Shared complete desugared runtime for release/instrumentation class-loader compatibility.
+tasks.matching { it.name.startsWith('l8DexDesugarLib') }.configureEach { task ->
+    task.keepRulesConfigurations.addAll(['-dontobfuscate', '-dontoptimize', '-keep class ** { *; }'])
+}
+""", encoding='utf-8')
+manifest_record = ROOT / 'ai/INTEGRATION_APPLIED.json'
+record = json.loads(manifest_record.read_text(encoding='utf-8'))
+record['package'] = package_base + '.release'
+record['memory_version'] = 2
+record['planner_output_budget'] = 'author setting; not constrained by the extraction cap'
+manifest_record.write_text(json.dumps(record,ensure_ascii=False,indent=2),encoding='utf-8')
