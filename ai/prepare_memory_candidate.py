@@ -1,30 +1,25 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Use a non-debuggable, non-minified recovery candidate with test-compatible libraries.
-Release shrinking had removed androidx.tracing.Trace required by AndroidJUnitRunner.
-Disabling shrinking here preserves all shared dependency APIs; tests remain mandatory.
-The reader source code and persisted user-data schema are not modified by this setting.
+"""Keep tracing APIs used by the Android test runner in the optimized target APK.
+Keep the upstream minSdk23 and R8 optimization: HtmlUnit has API26 method-handle
+branches that upstream R8 must eliminate or rewrite for older Android devices.
 """
 from pathlib import Path
-p=Path(__file__).resolve().parent / 'install.py'
-text=p.read_text(encoding='utf-8')
-marker='# MEMORY_RECOVERY_CANDIDATE_BUILD'
+p = Path(__file__).resolve().parent / 'install.py'
+text = p.read_text(encoding='utf-8')
+old = '# MEMORY_RECOVERY_CANDIDATE_BUILD'
+if old in text:
+    text = text[:text.index(old)]
+marker = '# MEMORY_TRACING_TEST_COMPATIBILITY'
 if marker not in text:
     text += '''
-# MEMORY_RECOVERY_CANDIDATE_BUILD
-# Release APK stays non-debuggable. Retain shared dependency APIs for instrumentation
-# instead of accidentally testing an APK with libraries removed under its runner.
-build = ROOT / 'app/build.gradle'
-text = build.read_text(encoding='utf-8')
-if '// Memory recovery candidate: retain shared libraries' not in text:
-    build.write_text(text + """
-// Memory recovery candidate: retain shared libraries, do not change reader behavior.
-android.buildTypes.release {
-    minifyEnabled false
-    shrinkResources false
-    debuggable false
-}
-""", encoding='utf-8')
+# MEMORY_TRACING_TEST_COMPATIBILITY
+# AndroidJUnitRunner references this shared runtime dependency, even when the
+# release target itself does not call all its methods. Do not strip its API.
+pro = ROOT / 'app/proguard-rules.pro'
+if '# Memory runner shared tracing API' not in pro.read_text(encoding='utf-8'):
+    with pro.open('a', encoding='utf-8') as f:
+        f.write('\\n# Memory runner shared tracing API\\n-keep class androidx.tracing.** { *; }\\n')
 '''
-    p.write_text(text,encoding='utf-8')
-print('Configured non-debuggable recovery candidate without release shrinking')
+p.write_text(text, encoding='utf-8')
+print('Retained tracing API; upstream minSdk23 and R8 optimization unchanged')
