@@ -26,6 +26,8 @@ jobs:
           run-id: 34600624012
           github-token: ${{ github.token }}
           path: tested-build
+      - name: Prepare first-launch UI handling
+        run: python3 ai/smoke_device_dialogs.py
       - name: Enable emulator virtualization
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
