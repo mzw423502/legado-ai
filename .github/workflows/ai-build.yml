@@ -2,7 +2,9 @@ name: Legado AI Build
 on:
   push:
     branches: [ai-writing]
-    paths: ['.github/workflows/ai-build.yml', 'ai/BUILD']
+    paths:
+      - '.github/workflows/ai-build.yml'
+      - 'ai/**'
   workflow_dispatch:
 permissions:
   contents: read
@@ -24,6 +26,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Integrate AI module
         run: python3 ai/install.py
+      - name: Verify visible AI entry
+        run: |
+          set -euo pipefail
+          grep -q 'android:id="@id/menu_ai_creation"' app/src/main/res/menu/main_bookshelf.xml
+          grep -q 'android:title="AI 创作"' app/src/main/res/menu/main_bookshelf.xml
+          grep -q 'app:showAsAction="always|withText"' app/src/main/res/menu/main_bookshelf.xml
+          grep -q 'R.id.menu_ai_creation -> io.legado.app.ai.AiActivity.open' app/src/main/java/io/legado/app/ui/main/bookshelf/BaseBookshelfFragment.kt
+          grep -q 'android:name=".ai.AiActivity"' app/src/main/AndroidManifest.xml
+          echo 'VISIBLE_AI_ENTRY_OK'
       - name: Build native AI APK
         run: |
           set -o pipefail
@@ -35,6 +46,7 @@ jobs:
           mkdir -p ai-artifacts
           cp build-ai.log ai-artifacts/ || true
           cp ai/INTEGRATION_APPLIED.json ai-artifacts/ || true
+          cp app/src/main/res/menu/main_bookshelf.xml ai-artifacts/MAIN_BOOKSHELF_WITH_AI.xml || true
           find app/build/outputs/apk -name '*.apk' -exec cp {} ai-artifacts/ \; || true
           git rev-parse HEAD > ai-artifacts/SOURCE_COMMIT.txt
           python3 - <<'PY'
