@@ -22,7 +22,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Build pinned release baseline
+      - name: Integrate AI module
+        run: python3 ai/install.py
+      - name: Build native AI APK
         run: |
           set -o pipefail
           chmod +x gradlew
@@ -32,9 +34,20 @@ jobs:
         run: |
           mkdir -p ai-artifacts
           cp build-ai.log ai-artifacts/ || true
+          cp ai/INTEGRATION_APPLIED.json ai-artifacts/ || true
           find app/build/outputs/apk -name '*.apk' -exec cp {} ai-artifacts/ \; || true
           git rev-parse HEAD > ai-artifacts/SOURCE_COMMIT.txt
-          git archive --format=zip --output=ai-artifacts/Source.zip HEAD
+          python3 - <<'PY'
+          import os, zipfile
+          excluded={'.git','.gradle','build','.kotlin','ai-artifacts','node_modules'}
+          with zipfile.ZipFile('ai-artifacts/Source.zip','w',zipfile.ZIP_DEFLATED) as z:
+              for root, dirs, files in os.walk('.'):
+                  dirs[:]=[d for d in dirs if d not in excluded]
+                  for name in files:
+                      path=os.path.join(root,name)
+                      if name.endswith('.jks'): continue
+                      z.write(path, os.path.relpath(path,'.'))
+          PY
           tool=$(find "$ANDROID_HOME/build-tools" -name apksigner.jar | sort -V | tail -1)
           [ -z "$tool" ] || cp "$tool" ai-artifacts/
       - uses: actions/upload-artifact@v4
