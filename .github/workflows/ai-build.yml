@@ -2,12 +2,10 @@ name: Legado AI Build
 on:
   push:
     branches: [ai-writing]
-    paths:
-      - '.github/workflows/ai-build.yml'
-      - 'ai/**'
+    paths: ['.github/workflows/ai-build.yml', 'ai/BUILD']
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: legado-ai-${{ github.ref }}
   cancel-in-progress: true
@@ -15,6 +13,8 @@ jobs:
   android:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      AI_PACKAGE_BASE: com.mzw.legado.ai.memory
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,48 +24,89 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Integrate AI module
-        run: python3 ai/install.py
-      - name: Verify visible AI entry
+      - name: Materialize reviewed source changes
+        run: python3 ai/apply_memory_v2.py
+      - name: Integrate native module
         run: |
-          set -euo pipefail
+          python3 ai/install.py
           grep -q 'android:id="@id/menu_ai_creation"' app/src/main/res/menu/main_bookshelf.xml
-          grep -q 'android:title="AI 创作"' app/src/main/res/menu/main_bookshelf.xml
           grep -q 'app:showAsAction="always|withText"' app/src/main/res/menu/main_bookshelf.xml
-          grep -q 'R.id.menu_ai_creation -> io.legado.app.ai.AiActivity.open' app/src/main/java/io/legado/app/ui/main/bookshelf/BaseBookshelfFragment.kt
-          grep -q 'android:name=".ai.AiActivity"' app/src/main/AndroidManifest.xml
-          echo 'VISIBLE_AI_ENTRY_OK'
-      - name: Build native AI APK
+          grep -q '只整理记忆，收录本章' app/src/main/java/io/legado/app/ai/AiHomeScreens.kt
+          echo 'VISIBLE_ENTRY_AND_MEMORY_REPAIR_ACTION_OK'
+      - name: Prepare temporary instrumentation signing key
+        run: |
+          keytool -genkeypair -keystore "$RUNNER_TEMP/ci-signing.jks" -storetype JKS -storepass ci-instrumentation-only -keypass ci-instrumentation-only -alias memory-ci -keyalg RSA -keysize 2048 -validity 30 -dname 'CN=CI Instrumentation Only' -noprompt
+          printf '\nRELEASE_STORE_FILE=%s\nRELEASE_STORE_PASSWORD=ci-instrumentation-only\nRELEASE_KEY_ALIAS=memory-ci\nRELEASE_KEY_PASSWORD=ci-instrumentation-only\n' "$RUNNER_TEMP/ci-signing.jks" >> gradle.properties
+      - name: Regression tests and Android APK build
         run: |
           set -o pipefail
           chmod +x gradlew
-          ./gradlew :app:assembleAppRelease --stacktrace --console=plain --no-daemon --max-workers=2 2>&1 | tee build-ai.log
-      - name: Collect artifacts
+          ./gradlew :app:testAppReleaseUnitTest --tests 'io.legado.app.ai.*' --stacktrace --console=plain --no-daemon --max-workers=2 2>&1 | tee tests-memory.log
+          ./gradlew :app:assembleAppRelease :app:assembleAppReleaseAndroidTest --stacktrace --console=plain --no-daemon --max-workers=2 2>&1 | tee build-ai.log
+      - name: Preserve readable source in development branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ai/core ai/android ai/tests ai/install.py
+          if ! git diff --cached --quiet; then
+            git commit -m '[skip ci] feat: bounded chapter memory, resumable extraction and lossless legacy support'
+            git push origin HEAD:ai-writing
+          fi
+      - name: Enable hardware virtualization for emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Native Android preservation and UI verification
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            mkdir -p ai-artifacts/screenshots
+            adb logcat -c
+            ./gradlew :app:connectedAppReleaseAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.legado.app.ai.MemoryUpgradeDeviceTest --console=plain --no-daemon --max-workers=2 > device-memory.log 2>&1; result=$?
+            cat device-memory.log
+            adb pull /sdcard/Android/data/com.mzw.legado.ai.memory.release/files/memory-test-screens ai-artifacts/screenshots/ || true
+            adb logcat -d > ai-artifacts/device-logcat.txt
+            exit $result
+      - name: Collect build and validation artifacts
         if: always()
         run: |
           mkdir -p ai-artifacts
-          cp build-ai.log ai-artifacts/ || true
+          cp tests-memory.log build-ai.log device-memory.log ai-artifacts/ 2>/dev/null || true
           cp ai/INTEGRATION_APPLIED.json ai-artifacts/ || true
           cp app/src/main/res/menu/main_bookshelf.xml ai-artifacts/MAIN_BOOKSHELF_WITH_AI.xml || true
-          find app/build/outputs/apk -name '*.apk' -exec cp {} ai-artifacts/ \; || true
+          find app/build/outputs/apk -name '*.apk' -exec cp {} ai-artifacts/ \; 2>/dev/null || true
+          cp -r app/build/test-results ai-artifacts/unit-test-results 2>/dev/null || true
+          cp -r app/build/outputs/androidTest-results ai-artifacts/android-test-results 2>/dev/null || true
           git rev-parse HEAD > ai-artifacts/SOURCE_COMMIT.txt
+          git diff > ai-artifacts/INTEGRATION_DIFF.patch
           python3 - <<'PY'
           import os, zipfile
+          from pathlib import Path
+          p=Path('gradle.properties')
+          p.write_text('\n'.join(x for x in p.read_text().splitlines() if not x.startswith('RELEASE_'))+'\n')
           excluded={'.git','.gradle','build','.kotlin','ai-artifacts','node_modules'}
           with zipfile.ZipFile('ai-artifacts/Source.zip','w',zipfile.ZIP_DEFLATED) as z:
               for root, dirs, files in os.walk('.'):
                   dirs[:]=[d for d in dirs if d not in excluded]
                   for name in files:
                       path=os.path.join(root,name)
-                      if name.endswith('.jks'): continue
-                      z.write(path, os.path.relpath(path,'.'))
+                      if name.lower().endswith(('.jks','.keystore','.ttf','.otf','.woff','.woff2')): continue
+                      if name in ('local.properties','INTEGRATION_DIFF.patch'): continue
+                      z.write(path,os.path.relpath(path,'.'))
           PY
           tool=$(find "$ANDROID_HOME/build-tools" -name apksigner.jar | sort -V | tail -1)
           [ -z "$tool" ] || cp "$tool" ai-artifacts/
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: legado-ai-build-${{ github.run_number }}
+          name: legado-ai-memory-${{ github.run_number }}
           path: ai-artifacts/
           retention-days: 30
           if-no-files-found: error
