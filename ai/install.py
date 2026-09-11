@@ -58,12 +58,14 @@ replace(JAVA / 'ai/core/ProjectActions.kt', 'pendingPublish = true, seedMemory =
 replace(JAVA / 'ai/core/ContextComposer.kt', 'p.settings.validate()\n        val draft',
     'p.settings.validate()\n        if (p.chapters.size > p.settings.recentChapters && p.memory().isBlank())\n            throw Paused("保留的前文较长，但缺少当前记忆。请先填写并核对长期记忆，再开始创作。")\n        val draft')
 
-# Add only small entry points to the original menus.
+# Add visible entry points while preserving the original reading UI.
+# The bookshelf entry is a static ALWAYS action: it must be visible without opening the overflow menu.
 res = APP / 'res/values/ai_ids.xml'
 res.write_text('<resources><item type="id" name="menu_ai_creation" /></resources>\n', encoding='utf-8')
+shelf_menu = APP / 'res/menu/main_bookshelf.xml'
+replace(shelf_menu, '    <item\n        android:id="@+id/menu_search"',
+    '    <item\n        android:id="@id/menu_ai_creation"\n        android:icon="@drawable/ic_edit"\n        android:title="AI 创作"\n        app:showAsAction="always|withText" />\n\n    <item\n        android:id="@+id/menu_search"')
 shelf = JAVA / 'ui/main/bookshelf/BaseBookshelfFragment.kt'
-replace(shelf, 'menuInflater.inflate(R.menu.main_bookshelf, menu)',
-    'menuInflater.inflate(R.menu.main_bookshelf, menu)\n        menu.add(0, R.id.menu_ai_creation, 0, "AI 创作").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)')
 replace(shelf, 'R.id.menu_remote -> startActivity<RemoteBookActivity>()',
     'R.id.menu_ai_creation -> io.legado.app.ai.AiActivity.open(requireContext())\n            R.id.menu_remote -> startActivity<RemoteBookActivity>()')
 read = JAVA / 'ui/book/read/ReadBookActivity.kt'
@@ -98,8 +100,8 @@ replace(manifest, '        <!-- 主入口 -->', '''        <!-- Independent AI m
         <!-- 主入口 -->''')
 build = ROOT / 'app/build.gradle'
 replace(build, 'applicationId "com.legado.app"', 'applicationId "com.mzw.legado.ai"')
-replace(build, 'versionCode = versionCodeValue', 'versionCode = 10001')
-replace(build, 'versionName version', 'versionName "3.26082823-ai.1"')
+replace(build, 'versionCode = versionCodeValue', 'versionCode = 10002')
+replace(build, 'versionName version', 'versionName "3.26082823-ai.2"')
 text = build.read_text(encoding='utf-8')
 if '// AI extension build settings' not in text:
     build.write_text(text + '''\n// AI extension build settings
@@ -124,5 +126,6 @@ for group, target in [('unit', ROOT / 'app/src/test/java/io/legado/app/ai'),
     'package': 'com.mzw.legado.ai.release', 'patched_files': sorted(set(PATCHES)),
     'reader': 'original Legado native reader', 'source_engine': 'unchanged',
     'key_storage': 'Android Keystore; encrypted value in noBackupFilesDir',
+    'visible_entry': 'bookshelf toolbar: AI 创作 (always)',
 }, ensure_ascii=False, indent=2), encoding='utf-8')
 print('Applied AI extension; original reading layout and source engine retained.')
