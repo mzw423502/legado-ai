@@ -30,6 +30,7 @@ jobs:
         run: |
           test -f ai/core/MemoryLedger.kt
           python3 ai/finish_memory_build.py
+          python3 ai/prepare_memory_candidate.py
       - name: Integrate native module
         run: |
           python3 ai/install.py
@@ -53,7 +54,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add ai/core ai/android ai/tests ai/install.py
           if ! git diff --cached --quiet; then
-            git commit -m '[skip ci] fix: preserve planning budget and align Android desugared runtime'
+            git commit -m '[skip ci] build: preserve shared libraries in native recovery candidate'
             git push origin HEAD:ai-writing
           fi
       - name: Enable hardware virtualization for emulator
